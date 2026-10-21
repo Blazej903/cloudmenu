@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "cloudmenu",
+  "version": "${version}",
+  "name": "Cloud Menu",
+  "description": "Czyste, ładne menu pod klawiszem P: gracze na serwerze, moduły, zmiana kolorów GUI i klawiszy.",
+  "authors": ["Ty"],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["pl.cloudmenu.CloudMenuClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.18.1",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
