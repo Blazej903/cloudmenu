@@ -15,6 +15,7 @@ public final class CloudKeys {
     public static KeyBinding ZOOM;
     public static KeyBinding FULLBRIGHT;
     public static KeyBinding SPRINT;
+    public static KeyBinding TRACERS;
 
     private CloudKeys() {
     }
@@ -24,6 +25,7 @@ public final class CloudKeys {
         ZOOM = reg("key.cloudmenu.zoom", GLFW.GLFW_KEY_C);
         FULLBRIGHT = reg("key.cloudmenu.fullbright", InputUtil.UNKNOWN_KEY.getCode());
         SPRINT = reg("key.cloudmenu.sprint", InputUtil.UNKNOWN_KEY.getCode());
+        TRACERS = reg("key.cloudmenu.tracers", InputUtil.UNKNOWN_KEY.getCode());
     }
 
     private static KeyBinding reg(String translationKey, int defaultKey) {

@@ -19,7 +19,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.function.DoubleConsumer;
 
-/** Menu otwierane klawiszem P (zmienialny w zakładce Klawisze). */
+/** Przezroczyste, przeciągane okno menu (klawisz P, zmienialny w zakładce Klawisze). */
 public class CloudMenuScreen extends Screen {
 
     private enum Tab {
@@ -43,6 +43,8 @@ public class CloudMenuScreen extends Screen {
     }
 
     private static final int[] PRESETS = {0x58B4FF, 0x8B7BFF, 0xFF6FA8, 0x4ADE9B, 0xFFA94D, 0xF25F5C, 0xE5E7EB};
+    private static final int COLUMNS = 3;
+    private static final int TOP_BAR = 30;
 
     private final List<Hit> hits = new ArrayList<>();
     private Tab tab = Tab.PLAYERS;
@@ -57,8 +59,19 @@ public class CloudMenuScreen extends Screen {
     private Ui.Palette pal;
     private int accent;
     private int alpha;
+    private int rowAlpha;
+    private boolean shadow;
     private String copied;
     private long copiedUntil;
+
+    // okno
+    private int px;
+    private int py;
+    private int pw;
+    private int ph;
+    private boolean draggingWin;
+    private int dragDX;
+    private int dragDY;
 
     public CloudMenuScreen() {
         super(Text.literal("Cloud Menu"));
@@ -80,74 +93,72 @@ public class CloudMenuScreen extends Screen {
         pal = Ui.palette(cfg.light);
         accent = cfg.accent;
         alpha = cfg.opacity;
+        rowAlpha = (int) (alpha * 0.85);
+        shadow = !cfg.light;
 
-        ctx.fill(0, 0, width, height, 0x66000000);
+        // okno (bez przyciemniania reszty ekranu)
+        pw = Math.min(430, width - 16);
+        ph = Math.min(250, height - 16);
+        px = cfg.winX < 0 ? (width - pw) / 2 : cfg.winX;
+        py = cfg.winY < 0 ? (height - ph) / 2 : cfg.winY;
+        px = Math.max(0, Math.min(px, width - pw));
+        py = Math.max(0, Math.min(py, height - ph));
 
-        int pw = Math.min(470, width - 16);
-        int ph = Math.min(292, height - 16);
-        int px = (width - pw) / 2;
-        int py = (height - ph) / 2;
-
-        Ui.roundRect(ctx, px - 2, py - 2, pw + 4, ph + 4, 10, 0x44000000);
         Ui.roundRect(ctx, px, py, pw, ph, 8, Ui.argb(alpha, pal.panel()));
 
-        // --- panel boczny z chmurką w lewym górnym rogu
-        int sx = px + 8;
-        int sy = py + 8;
-        int sw = 112;
-        int sh = ph - 16;
-        Ui.roundRect(ctx, sx, sy, sw, sh, 6, Ui.argb(alpha, pal.card()));
-        Ui.cloud(ctx, sx + 10, sy + 10, Ui.opaque(accent));
-        bold(ctx, "Cloud", sx + 44, sy + 10, pal.text());
-        text(ctx, "menu", sx + 44, sy + 21, pal.muted());
-        ctx.fill(sx + 8, sy + 36, sx + sw - 8, sy + 37, Ui.opaque(pal.line()));
+        // --- pasek górny: chmurka w lewym górnym rogu, zakładki, zamknij
+        Ui.cloud(ctx, px + 10, py + 6, Ui.opaque(accent));
+        bold(ctx, "Cloud", px + 44, py + 11, pal.text());
 
-        int ty = sy + 44;
+        int tx = px + 92;
         for (Tab t : Tab.values()) {
+            int tw = textRenderer.getWidth(t.label) + 16;
             boolean active = t == tab;
-            boolean hov = hover(sx + 6, ty, sw - 12, 22, false);
+            boolean hov = hover(tx, py + 6, tw, 18, false);
             if (active) {
-                Ui.roundRect(ctx, sx + 6, ty, sw - 12, 22, 5, Ui.opaque(accent));
+                Ui.roundRect(ctx, tx, py + 6, tw, 18, 5, Ui.opaque(accent));
             } else if (hov) {
-                Ui.roundRect(ctx, sx + 6, ty, sw - 12, 22, 5, Ui.opaque(pal.rowHover()));
+                Ui.roundRect(ctx, tx, py + 6, tw, 18, 5, Ui.argb(rowAlpha, pal.rowHover()));
             }
-            text(ctx, t.label, sx + 16, ty + 7, active ? Ui.onColor(accent) : pal.text());
+            text(ctx, t.label, tx + 8, py + 11, active ? Ui.onColor(accent) : pal.text());
             final Tab target = t;
-            hits.add(new Hit(sx + 6, ty, sw - 12, 22, false, () -> {
+            hits.add(new Hit(tx, py + 6, tw, 18, false, () -> {
                 tab = target;
                 scroll = 0;
                 listening = null;
             }, null));
-            ty += 25;
+            tx += tw + 4;
         }
-        text(ctx, "Menu: " + keyName(CloudKeys.OPEN), sx + 10, sy + sh - 14, pal.muted());
 
-        // --- karta z zawartością
-        int cx = sx + sw + 8;
-        int cy = py + 8;
-        int cw = px + pw - 8 - cx;
-        int ch = ph - 16;
-        Ui.roundRect(ctx, cx, cy, cw, ch, 6, Ui.argb(alpha, pal.card()));
-        bold(ctx, tab.label, cx + 12, cy + 10, pal.text());
+        int closeX = px + pw - 26;
+        boolean closeHover = hover(closeX, py + 6, 18, 18, false);
+        if (closeHover) {
+            Ui.roundRect(ctx, closeX, py + 6, 18, 18, 5, Ui.opaque(0xF25F5C));
+        }
+        text(ctx, "x", closeX + 6, py + 11, closeHover ? 0xFFFFFF : pal.muted());
+        hits.add(new Hit(closeX, py + 6, 18, 18, false, () -> close(), null));
 
-        String note = "";
         if (tab == Tab.PLAYERS) {
             ClientPlayNetworkHandler net = client == null ? null : client.getNetworkHandler();
-            note = (net == null ? 0 : net.getPlayerList().size()) + " online";
+            String note = (net == null ? 0 : net.getPlayerList().size()) + " online";
             if (copied != null && System.currentTimeMillis() < copiedUntil) {
                 note = "Skopiowano: " + copied;
             }
+            text(ctx, note, closeX - 8 - textRenderer.getWidth(note), py + 11, pal.muted());
         }
-        if (!note.isEmpty()) {
-            text(ctx, note, cx + cw - 12 - textRenderer.getWidth(note), cy + 10, pal.muted());
-        }
-        ctx.fill(cx + 10, cy + 25, cx + cw - 10, cy + 26, Ui.opaque(pal.line()));
+        ctx.fill(px + 10, py + TOP_BAR, px + pw - 10, py + TOP_BAR + 1, Ui.argb(110, pal.line()));
 
-        clipTop = cy + 30;
-        clipBottom = cy + ch - 6;
+        // --- zawartość
+        int cx = px + 10;
+        int cy = py + TOP_BAR + 6;
+        int cw = pw - 20;
+        int ch = ph - TOP_BAR - 6 - 8;
+        clipTop = cy;
+        clipBottom = cy + ch;
+
         ctx.enableScissor(cx, clipTop, cx + cw, clipBottom);
-        int x = cx + 10;
-        int w = cw - 24;
+        int x = cx;
+        int w = cw - 8;
         int y = clipTop - scroll;
         int used = switch (tab) {
             case PLAYERS -> drawPlayers(ctx, x, y, w);
@@ -163,7 +174,7 @@ public class CloudMenuScreen extends Screen {
             int trackH = clipBottom - clipTop;
             int thumbH = Math.max(18, trackH * trackH / (trackH + maxScroll));
             int thumbY = clipTop + (int) ((trackH - thumbH) * (scroll / (double) maxScroll));
-            Ui.roundRect(ctx, cx + cw - 8, thumbY, 3, thumbH, 1, Ui.argb(170, pal.muted()));
+            Ui.roundRect(ctx, cx + cw - 4, thumbY, 3, thumbH, 1, Ui.argb(170, pal.muted()));
         }
     }
 
@@ -180,34 +191,46 @@ public class CloudMenuScreen extends Screen {
         list.sort(Comparator.comparing((PlayerListEntry e) -> tabList.getPlayerName(e).getString().toLowerCase()));
         PlayerListEntry self = net.getPlayerListEntry(client.player.getUuid());
 
-        int used = 0;
-        for (PlayerListEntry e : list) {
-            Text name = tabList.getPlayerName(e);
-            String plain = name.getString();
-            int ry = y + used;
-            row(ctx, x, ry, w, 26, () -> copy(plain));
-            PlayerSkinDrawer.draw(ctx, e.getSkinTextures(), x + 6, ry + 5, 16);
-            ctx.drawText(textRenderer, name, x + 28, ry + 9, Ui.opaque(pal.text()), false);
-            if (e == self) {
-                text(ctx, "(Ty)", x + 28 + textRenderer.getWidth(name) + 6, ry + 9, accent);
-            }
-            int ping = e.getLatency();
-            String ps = ping + " ms";
-            int pc = ping < 0 ? pal.muted() : ping < 80 ? 0x4ADE80 : ping < 160 ? 0xFACC15 : 0xF87171;
-            text(ctx, ps, x + w - 8 - textRenderer.getWidth(ps), ry + 9, pc);
-            used += 30;
-        }
         if (list.isEmpty()) {
             text(ctx, "Nikogo tu nie ma.", x, y + 4, pal.muted());
             return 20;
         }
-        return used;
+
+        int gap = 6;
+        int cardW = (w - gap * (COLUMNS - 1)) / COLUMNS;
+        int cardH = 30;
+        for (int i = 0; i < list.size(); i++) {
+            PlayerListEntry e = list.get(i);
+            int col = i % COLUMNS;
+            int rowIdx = i / COLUMNS;
+            int rx = x + col * (cardW + gap);
+            int ry = y + rowIdx * (cardH + gap);
+
+            String plain = tabList.getPlayerName(e).getString();
+            row(ctx, rx, ry, cardW, cardH, () -> copy(plain));
+            PlayerSkinDrawer.draw(ctx, e.getSkinTextures(), rx + 6, ry + 7, 16);
+
+            String shown = textRenderer.trimToWidth(plain, cardW - 34);
+            text(ctx, shown, rx + 28, ry + 6, e == self ? accent : pal.text());
+
+            int ping = e.getLatency();
+            String ps = ping + " ms";
+            int pc = ping < 0 ? pal.muted() : ping < 80 ? 0x4ADE80 : ping < 160 ? 0xFACC15 : 0xF87171;
+            text(ctx, ps, rx + 28, ry + 17, pc);
+        }
+        int rows = (list.size() + COLUMNS - 1) / COLUMNS;
+        return rows * (cardH + gap);
     }
 
     private int drawModules(DrawContext ctx, int x, int y, int w) {
         CloudConfig c = CloudConfig.get();
         int u = 0;
         u += section(ctx, x, y + u, "Gameplay");
+        u += toggleRow(ctx, x, y + u, w, "Tracery", "Linie od celownika do graczy (na serwerach często zabronione)",
+                c.tracers, () -> {
+                    c.tracers = !c.tracers;
+                    CloudConfig.save();
+                });
         u += toggleRow(ctx, x, y + u, w, "Fullbright", "Widzisz w ciemności (efekt tylko u Ciebie)",
                 c.fullbright, () -> {
                     c.fullbright = !c.fullbright;
@@ -246,8 +269,8 @@ public class CloudMenuScreen extends Screen {
         u += section(ctx, x, y + u, "Kolor motywu");
         for (int i = 0; i < PRESETS.length; i++) {
             int col = PRESETS[i];
-            int sxp = x + i * 30;
-            int syp = y + u;
+            int sxp = x + i * 30 + 2;
+            int syp = y + u + 2;
             if ((c.accent & 0xFFFFFF) == col) {
                 Ui.roundRect(ctx, sxp - 2, syp - 2, 26, 26, 8, Ui.opaque(pal.text()));
             }
@@ -257,7 +280,7 @@ public class CloudMenuScreen extends Screen {
                 CloudConfig.save();
             }, null));
         }
-        u += 32;
+        u += 34;
 
         u += slider(ctx, x, y + u, w, "R", ((c.accent >> 16) & 255) / 255.0,
                 String.valueOf((c.accent >> 16) & 255), f -> {
@@ -274,15 +297,20 @@ public class CloudMenuScreen extends Screen {
         text(ctx, String.format("HEX  #%06X", c.accent & 0xFFFFFF), x + 2, y + u + 2, pal.muted());
         u += 18;
 
-        u += section(ctx, x, y + u, "Panel");
-        u += slider(ctx, x, y + u, w, "A", (c.opacity - 120) / 135.0,
+        u += section(ctx, x, y + u, "Okno");
+        u += slider(ctx, x, y + u, w, "A", (c.opacity - 40) / 215.0,
                 Math.round((c.opacity / 255f) * 100) + "%", f -> {
-                    c.opacity = 120 + (int) Math.round(f * 135);
+                    c.opacity = 40 + (int) Math.round(f * 215);
                 }, pal.muted());
         u += toggleRow(ctx, x, y + u, w, "Jasny motyw", null, c.light, () -> {
             c.light = !c.light;
             CloudConfig.save();
         });
+        u += 4;
+        text(ctx, "Okno przeciągniesz za górny pasek.", x + 2, y + u, pal.muted());
+        u += 12;
+        text(ctx, "Mniejsza wartość A = bardziej przezroczyste.", x + 2, y + u, pal.muted());
+        u += 14;
         return u;
     }
 
@@ -290,6 +318,7 @@ public class CloudMenuScreen extends Screen {
         int u = 0;
         u += keyRow(ctx, x, y + u, w, "Otwórz menu", CloudKeys.OPEN);
         u += keyRow(ctx, x, y + u, w, "Zoom (przytrzymaj)", CloudKeys.ZOOM);
+        u += keyRow(ctx, x, y + u, w, "Tracery (przełącz)", CloudKeys.TRACERS);
         u += keyRow(ctx, x, y + u, w, "Fullbright (przełącz)", CloudKeys.FULLBRIGHT);
         u += keyRow(ctx, x, y + u, w, "Auto sprint (przełącz)", CloudKeys.SPRINT);
         u += 4;
@@ -308,7 +337,7 @@ public class CloudMenuScreen extends Screen {
 
     private boolean row(DrawContext ctx, int x, int y, int w, int h, Runnable click) {
         boolean hov = hover(x, y, w, h, true);
-        Ui.roundRect(ctx, x, y, w, h, 5, Ui.argb(alpha, hov ? pal.rowHover() : pal.row()));
+        Ui.roundRect(ctx, x, y, w, h, 5, Ui.argb(rowAlpha, hov ? pal.rowHover() : pal.row()));
         if (click != null) {
             hits.add(new Hit(x, y, w, h, true, click, null));
         }
@@ -326,7 +355,7 @@ public class CloudMenuScreen extends Screen {
         row(ctx, x, y, w, h, toggle);
         text(ctx, label, x + 10, desc == null ? y + 8 : y + 6, pal.text());
         if (desc != null) {
-            text(ctx, desc, x + 10, y + 18, pal.muted());
+            text(ctx, textRenderer.trimToWidth(desc, w - 60), x + 10, y + 18, pal.muted());
         }
         int tx = x + w - 36;
         int tyy = y + h / 2 - 6;
@@ -370,11 +399,11 @@ public class CloudMenuScreen extends Screen {
     }
 
     private void text(DrawContext ctx, String s, int x, int y, int rgb) {
-        ctx.drawText(textRenderer, s, x, y, Ui.opaque(rgb), false);
+        ctx.drawText(textRenderer, s, x, y, Ui.opaque(rgb), shadow);
     }
 
     private void bold(DrawContext ctx, String s, int x, int y, int rgb) {
-        ctx.drawText(textRenderer, Text.literal(s).formatted(Formatting.BOLD), x, y, Ui.opaque(rgb), false);
+        ctx.drawText(textRenderer, Text.literal(s).formatted(Formatting.BOLD), x, y, Ui.opaque(rgb), shadow);
     }
 
     private void copy(String s) {
@@ -415,6 +444,13 @@ public class CloudMenuScreen extends Screen {
                 }
                 return true;
             }
+            // przeciąganie okna za górny pasek
+            if (mx >= px && mx < px + pw && my >= py && my < py + TOP_BAR) {
+                draggingWin = true;
+                dragDX = (int) (mx - px);
+                dragDY = (int) (my - py);
+                return true;
+            }
         }
         return super.mouseClicked(click, doubled);
     }
@@ -425,6 +461,12 @@ public class CloudMenuScreen extends Screen {
             dragTo(dragging, click.x());
             return true;
         }
+        if (draggingWin) {
+            CloudConfig cfg = CloudConfig.get();
+            cfg.winX = Math.max(0, Math.min((int) (click.x() - dragDX), width - pw));
+            cfg.winY = Math.max(0, Math.min((int) (click.y() - dragDY), height - ph));
+            return true;
+        }
         return super.mouseDragged(click, offsetX, offsetY);
     }
 
@@ -432,6 +474,11 @@ public class CloudMenuScreen extends Screen {
     public boolean mouseReleased(Click click) {
         if (dragging != null) {
             dragging = null;
+            CloudConfig.save();
+            return true;
+        }
+        if (draggingWin) {
+            draggingWin = false;
             CloudConfig.save();
             return true;
         }

@@ -13,14 +13,22 @@ public final class CloudConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static CloudConfig instance = new CloudConfig();
 
+    /** Wersja formatu configu (0 = stary plik bez tego pola). */
+    public int ver = 0;
+
     // Wygląd
     public int accent = 0x58B4FF;   // kolor motywu (RGB)
     public boolean light = false;   // jasny motyw
-    public int opacity = 235;       // przezroczystość panelu 120..255
+    public int opacity = 120;       // przezroczystość okna 40..255 (mniej = bardziej przezroczyste)
+
+    // Pozycja okna (-1 = środek ekranu)
+    public int winX = -1;
+    public int winY = -1;
 
     // Moduły
     public boolean fullbright = false;
     public boolean autoSprint = false;
+    public boolean tracers = false;
 
     // HUD
     public boolean hud = true;
@@ -45,7 +53,12 @@ public final class CloudConfig {
                     instance = loaded;
                 }
             }
-            instance.opacity = Math.max(120, Math.min(255, instance.opacity));
+            if (instance.ver < 1) {
+                // nowy, bardziej przezroczysty wygląd domyślny
+                instance.opacity = 120;
+                instance.ver = 1;
+            }
+            instance.opacity = Math.max(40, Math.min(255, instance.opacity));
             save();
         } catch (Exception e) {
             CloudMenuClient.LOGGER.error("Nie udało się wczytać configu, używam domyślnego", e);

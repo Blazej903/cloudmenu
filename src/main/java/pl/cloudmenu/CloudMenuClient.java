@@ -29,6 +29,7 @@ public class CloudMenuClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
         ClientLifecycleEvents.CLIENT_STOPPING.register(this::stopZoom);
         HudElementRegistry.addLast(Identifier.of(MOD_ID, "hud"), CloudHud::render);
+        HudElementRegistry.addLast(Identifier.of(MOD_ID, "tracers"), Tracers::render);
     }
 
     private void tick(MinecraftClient client) {
@@ -45,6 +46,10 @@ public class CloudMenuClient implements ClientModInitializer {
         }
         while (CloudKeys.SPRINT.wasPressed()) {
             cfg.autoSprint = !cfg.autoSprint;
+            CloudConfig.save();
+        }
+        while (CloudKeys.TRACERS.wasPressed()) {
+            cfg.tracers = !cfg.tracers;
             CloudConfig.save();
         }
 
